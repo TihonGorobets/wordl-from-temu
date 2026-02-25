@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Wordle</title>
   <link rel="stylesheet" href="style.css" />
+  <!-- Firebase SDK (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -34,6 +37,11 @@
       <button class="icon-btn" id="btn-settings" aria-label="Settings">
         <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
           <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
+        </svg>
+      </button>
+      <button class="icon-btn" id="btn-multiplayer" aria-label="Multiplayer" title="Multiplayer">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+          <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
         </svg>
       </button>
       <button class="icon-btn" id="btn-theme" aria-label="Toggle theme">
@@ -219,7 +227,141 @@
     </div>
   </div>
 
+  <!-- Multiplayer: Join / Create modal -->
+  <div class="modal-overlay" id="mp-join-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Multiplayer</h2>
+        <button class="close-btn" data-close="mp-join-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="mp-field-group">
+          <label class="mp-label" for="mp-name-input">Your name</label>
+          <input class="mp-input" id="mp-name-input" type="text" maxlength="20" placeholder="Enter your name" />
+        </div>
+        <div class="mp-section-divider">Create a party</div>
+        <button class="mp-btn mp-btn-primary" onclick="createParty()">Create Party</button>
+        <div class="mp-section-divider">— or join one —</div>
+        <div class="mp-field-group">
+          <label class="mp-label" for="mp-code-input">Party code</label>
+          <input class="mp-input mp-code-input" id="mp-code-input" type="text" maxlength="6" placeholder="XXXXXX" />
+        </div>
+        <button class="mp-btn mp-btn-secondary" onclick="joinParty()">Join Party</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multiplayer: Lobby modal -->
+  <div class="modal-overlay" id="mp-lobby-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Party Lobby</h2>
+        <button class="close-btn" onclick="leaveParty()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="mp-code-display">
+          <span class="mp-code-label">Party Code</span>
+          <span class="mp-code-value" id="mp-lobby-code"></span>
+          <button class="mp-copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('mp-lobby-code').textContent).then(()=>showToast('Code copied!'))">Copy</button>
+        </div>
+        <div class="mp-player-count" id="mp-lobby-count"></div>
+        <ul class="mp-player-list" id="mp-lobby-players"></ul>
+        <div id="mp-host-controls">
+          <hr />
+          <p class="mp-section-title">Game Mode</p>
+          <div class="mp-mode-options">
+            <label class="mp-mode-option">
+              <input type="radio" name="mp-mode" id="mp-mode-classic" value="classic" checked onchange="mpSelectMode('classic')" />
+              <span class="mp-mode-card">
+                <strong>Classic</strong>
+                <small>Everyone guesses the same random word</small>
+              </span>
+            </label>
+            <label class="mp-mode-option">
+              <input type="radio" name="mp-mode" id="mp-mode-custom" value="custom" onchange="mpSelectMode('custom')" />
+              <span class="mp-mode-card">
+                <strong>Custom Word</strong>
+                <small>Each player takes a turn setting the word</small>
+              </span>
+            </label>
+          </div>
+          <button class="mp-btn mp-btn-primary" id="mp-lobby-start" onclick="mpHostStart()">Start Game</button>
+        </div>
+        <div id="mp-guest-waiting" class="mp-waiting-text" style="display:none">
+          Waiting for the host to start the game…
+        </div>
+        <button class="mp-btn mp-btn-ghost" onclick="leaveParty()">Leave Party</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multiplayer: Word chooser modal (Custom mode) -->
+  <div class="modal-overlay" id="mp-word-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Custom Word</h2>
+      </div>
+      <div class="modal-body">
+        <p class="mp-setter-label" id="mp-setter-label"></p>
+        <div id="mp-word-input-section">
+          <div class="mp-field-group" style="margin-top:16px">
+            <label class="mp-label" for="mp-secret-word-input">Secret 5-letter word</label>
+            <input class="mp-input mp-code-input" id="mp-secret-word-input" type="text" maxlength="5" placeholder="WORD" autocomplete="off" />
+          </div>
+          <button class="mp-btn mp-btn-primary" onclick="mpSubmitSecretWord()" style="margin-top:12px">Submit Word</button>
+        </div>
+        <div id="mp-word-waiting-msg" class="mp-waiting-text" style="display:none">
+          Please wait while the word is being chosen…
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multiplayer: Results modal -->
+  <div class="modal-overlay" id="mp-results-modal">
+    <div class="modal mp-results-modal">
+      <div class="modal-header">
+        <h2>Round Results</h2>
+      </div>
+      <div class="modal-body">
+        <div class="mp-results-word-reveal">
+          The word was <span class="mp-results-word" id="mp-results-word"></span>
+        </div>
+        <table class="mp-results-table">
+          <thead>
+            <tr>
+              <th>Player</th>
+              <th>Guesses</th>
+              <th>History</th>
+            </tr>
+          </thead>
+          <tbody id="mp-results-tbody"></tbody>
+        </table>
+        <div id="mp-results-host-controls" style="display:none">
+          <div class="mp-results-actions">
+            <button class="mp-btn mp-btn-primary" onclick="mpPlayAgain()">Play Again</button>
+            <button class="mp-btn mp-btn-secondary" onclick="mpReturnToLobby()">Back to Lobby</button>
+          </div>
+        </div>
+        <div id="mp-results-guest-msg" class="mp-waiting-text" style="display:none">
+          Waiting for the host to start the next round…
+        </div>
+        <button class="mp-btn mp-btn-ghost" onclick="leaveParty()" style="margin-top:8px">Leave Party</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multiplayer: Word-setter watching overlay -->
+  <div id="mp-watching-overlay" style="display:none">
+    <div class="mp-watching-box">
+      <div class="mp-watching-icon">👀</div>
+      <p class="mp-watching-title">Watching</p>
+      <p class="mp-watching-sub">The other players are guessing your word…</p>
+    </div>
+  </div>
+
   <script src="words.js"></script>
+  <script src="multiplayer.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

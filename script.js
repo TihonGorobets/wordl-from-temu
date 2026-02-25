@@ -131,6 +131,10 @@ function attachKeyboard() {
     // Avoid handling the same event twice if other listeners call into us.
     if (e.wordleHandled) return;
 
+    // Don't steal keypresses from text inputs (e.g. multiplayer name/code fields)
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
     if (e.ctrlKey || e.altKey || e.metaKey) return;
 
     if (e.key === 'Enter') {
@@ -221,31 +225,43 @@ function submitGuess() {
 
   // Evaluate
   const result = evaluateGuess(guessWord, targetWord);
+  const submittedRow = currentRow; // capture before reveal callback increments it
   revealRow(currentRow, guessWord, result, () => {
     updateKeyboard(guessWord, result);
     updateHardConstraints(guessWord, result);
     saveState();
+    mpRecordGuess(guessWord, result, submittedRow); // multiplayer: sync guess
 
     if (result.every(r => r === 'correct')) {
       const msgs = ['Genius!', 'Magnificent!', 'Impressive!', 'Splendid!', 'Great!', 'Phew!'];
       const msg = msgs[Math.min(currentRow, msgs.length - 1)];
-      showToast(msg, 2000);
       bounceRow(currentRow);
       gameOver = true;
       currentRow++;
-      recordResult(true, currentRow);
-      document.getElementById('btn-reset').classList.add('game-over');
-      setTimeout(() => openModal('stats-modal'), 2200);
+      if (mpShouldSuppressSoloEnd()) {
+        showToast(msg, 2000);
+        mpMarkDone(true);
+      } else {
+        showToast(msg, 2000);
+        recordResult(true, currentRow);
+        document.getElementById('btn-reset').classList.add('game-over');
+        setTimeout(() => openModal('stats-modal'), 2200);
+      }
     } else {
       currentRow++;
       currentCol = 0;
       currentGuess = [];
       if (currentRow >= MAX_GUESSES) {
         gameOver = true;
-        showToast(targetWord, 5000);
-        recordResult(false, 0);
-        document.getElementById('btn-reset').classList.add('game-over');
-        setTimeout(() => openModal('stats-modal'), 2200);
+        if (mpShouldSuppressSoloEnd()) {
+          showToast(targetWord, 3000);
+          mpMarkDone(false);
+        } else {
+          showToast(targetWord, 5000);
+          recordResult(false, 0);
+          document.getElementById('btn-reset').classList.add('game-over');
+          setTimeout(() => openModal('stats-modal'), 2200);
+        }
       }
     }
   });
@@ -434,10 +450,11 @@ function attachModalControls() {
     btn.addEventListener('click', () => closeModal(btn.dataset.close));
   });
 
-  // Overlay click to close
+  // Overlay click to close (but not MP lobby/word/results — use Leave button)
+  const MP_NO_CLICK_CLOSE = new Set(['mp-lobby-modal','mp-word-modal','mp-results-modal']);
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', e => {
-      if (e.target === overlay) closeModal(overlay.id);
+      if (e.target === overlay && !MP_NO_CLICK_CLOSE.has(overlay.id)) closeModal(overlay.id);
     });
   });
 
@@ -479,10 +496,16 @@ function attachModalControls() {
   // Reset / new game button
   document.getElementById('btn-reset').addEventListener('click', resetGame);
 
-  // Escape key
+  // Multiplayer button
+  document.getElementById('btn-multiplayer').addEventListener('click', openMpMenu);
+
+  // Escape key — don't auto-close MP lobby/word/results without proper cleanup
+  const MP_PERSISTENT_MODALS = new Set(['mp-lobby-modal','mp-word-modal','mp-results-modal']);
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      document.querySelectorAll('.modal-overlay.open').forEach(m => closeModal(m.id));
+      document.querySelectorAll('.modal-overlay.open').forEach(m => {
+        if (!MP_PERSISTENT_MODALS.has(m.id)) closeModal(m.id);
+      });
     }
   });
 }
