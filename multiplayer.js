@@ -53,14 +53,21 @@ function initFirebase() {
 function getOrCreatePlayerId() {
   let id = sessionStorage.getItem('mp_player_id');
   if (!id) {
-    id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    // Use crypto.getRandomValues for a cryptographically strong ID
+    const arr = new Uint8Array(16);
+    crypto.getRandomValues(arr);
+    id = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
     sessionStorage.setItem('mp_player_id', id);
   }
   return id;
 }
 
 function generatePartyCode() {
-  return Math.random().toString(36).slice(2, 8).toUpperCase();
+  // Use crypto.getRandomValues — Math.random() is not cryptographically secure
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // unambiguous chars (no 0/O, 1/I)
+  const arr = new Uint8Array(6);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, b => chars[b % chars.length]).join('');
 }
 
 /* ===================================================
@@ -81,8 +88,10 @@ function openMpMenu() {
    CREATE PARTY
    =================================================== */
 async function createParty() {
-  const name = document.getElementById('mp-name-input').value.trim();
+  const rawName = document.getElementById('mp-name-input').value.trim();
+  const name = sanitizePlayerName(rawName);
   if (!name) { showToast('Enter your name'); return; }
+  document.getElementById('mp-name-input').value = name; // reflect cleaned name
 
   mpPlayerName = name;
   mpPlayerId   = getOrCreatePlayerId();
@@ -117,11 +126,13 @@ async function createParty() {
    JOIN PARTY
    =================================================== */
 async function joinParty() {
-  const name = document.getElementById('mp-name-input').value.trim();
-  const code = document.getElementById('mp-code-input').value.trim().toUpperCase();
+  const rawName = document.getElementById('mp-name-input').value.trim();
+  const name = sanitizePlayerName(rawName);
+  const code = document.getElementById('mp-code-input').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 
   if (!name) { showToast('Enter your name'); return; }
   if (code.length !== 6) { showToast('Enter a valid 6-character party code'); return; }
+  document.getElementById('mp-name-input').value = name; // reflect cleaned name
 
   mpPlayerName = name;
   mpPlayerId   = getOrCreatePlayerId();
@@ -144,6 +155,12 @@ async function joinParty() {
     console.error(e);
     showToast('Failed to join party');
   }
+}
+
+/* Strips anything that isn't a letter, digit, space, hyphen, or apostrophe
+   and collapses multiple spaces, capped at 20 chars. */
+function sanitizePlayerName(raw) {
+  return raw.replace(/[^\p{L}\p{N} '\-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 20);
 }
 
 function mpPlayerObj(name) {
@@ -504,8 +521,10 @@ async function showMpResults() {
       guesses.forEach(g => {
         const rowDiv = document.createElement('div');
         rowDiv.classList.add('mp-mini-row');
+        const VALID_STATES = new Set(['correct', 'present', 'absent']);
         const resultArr = (g.result || '').split(',');
-        resultArr.forEach(state => {
+        resultArr.forEach(rawState => {
+          const state = VALID_STATES.has(rawState) ? rawState : 'absent'; // reject unknown values
           const sq = document.createElement('span');
           sq.classList.add('mp-mini-tile', state);
           rowDiv.appendChild(sq);

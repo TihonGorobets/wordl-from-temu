@@ -1,0 +1,53 @@
+{
+  "rules": {
+    "parties": {
+      "$partyCode": {
+
+
+        ".read": true,
+
+        ".write": true,
+
+        "status": {
+          ".validate": "newData.val() === 'lobby' || newData.val() === 'choosing' || newData.val() === 'playing' || newData.val() === 'results'"
+        },
+        "gameMode": {
+          ".validate": "newData.val() === 'classic' || newData.val() === 'custom'"
+        },
+        "targetWord": {
+          ".validate": "newData.isString() && newData.val().length <= 5"
+        },
+        "round": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+
+        "players": {
+          "$playerId": {
+            "name": {
+              ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 20"
+            },
+            "done":       { ".validate": "newData.isBoolean()" },
+            "won":        { ".validate": "newData.isBoolean()" },
+            "guessCount": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 6" },
+            "isWordSetter":{ ".validate": "newData.isBoolean()" },
+            "guesses": {
+              "$rowIndex": {
+                "word":   { ".validate": "newData.isString() && newData.val().length === 5" },
+                "result": {
+                  ".validate": "newData.isString() && newData.val().matches(/^(correct|present|absent)(,(correct|present|absent)){4}$/)"
+                },
+                "$other": { ".validate": false }
+              }
+            },
+            "$other": { ".validate": false }
+          }
+        }
+      }
+    },
+
+    "$other": {
+      ".read":  false,
+      ".write": false
+    }
+  }
+}
