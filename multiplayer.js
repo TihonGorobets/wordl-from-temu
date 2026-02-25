@@ -29,6 +29,7 @@ let mpLocalGuesses = [];      // [{word, result}] for this player this round
 let mpDone         = false;   // this player finished the round
 let mpIsWordSetter = false;   // custom-mode: this player chose the word this round
 let db             = null;
+let mpAuthReadyPromise = null;
 
 /* ===================================================
    FIREBASE INIT
@@ -36,6 +37,9 @@ let db             = null;
 function initFirebase() {
   if (db) return true;
   try {
+    if (!firebaseConfig || typeof firebaseConfig !== 'object') {
+      throw new Error('Missing firebaseConfig (config.js not loaded)');
+    }
     if (!firebase.apps || !firebase.apps.length) {
       firebase.initializeApp(firebaseConfig);
     }
@@ -47,10 +51,39 @@ function initFirebase() {
   }
 }
 
+async function ensureFirebaseReady() {
+  if (!initFirebase()) return false;
+  try {
+    if (!firebase.auth || typeof firebase.auth !== 'function') {
+      throw new Error('Firebase Auth SDK is not loaded');
+    }
+    const auth = firebase.auth();
+    if (auth.currentUser) return true;
+
+    if (!mpAuthReadyPromise) {
+      mpAuthReadyPromise = auth.signInAnonymously()
+        .catch(err => {
+          mpAuthReadyPromise = null;
+          throw err;
+        });
+    }
+    await mpAuthReadyPromise;
+    return true;
+  } catch (e) {
+    console.error('Firebase auth failed:', e);
+    return false;
+  }
+}
+
 /* ===================================================
    PLAYER ID  (persisted for the browser session)
    =================================================== */
 function getOrCreatePlayerId() {
+  const authUid = firebase.auth && firebase.auth().currentUser
+    ? firebase.auth().currentUser.uid
+    : '';
+  if (authUid) return authUid;
+
   let id = sessionStorage.getItem('mp_player_id');
   if (!id) {
     // Use crypto.getRandomValues for a cryptographically strong ID
@@ -73,9 +106,9 @@ function generatePartyCode() {
 /* ===================================================
    OPEN MULTIPLAYER MENU
    =================================================== */
-function openMpMenu() {
-  if (!initFirebase()) {
-    showToast('Firebase not configured — see multiplayer.js for setup instructions.');
+async function openMpMenu() {
+  if (!(await ensureFirebaseReady())) {
+    showToast('Multiplayer unavailable right now. Please refresh and try again.');
     return;
   }
   // Pre-fill name if returning player
@@ -88,6 +121,10 @@ function openMpMenu() {
    CREATE PARTY
    =================================================== */
 async function createParty() {
+  if (!(await ensureFirebaseReady())) {
+    showToast('Failed to connect to Firebase');
+    return;
+  }
   const rawName = document.getElementById('mp-name-input').value.trim();
   const name = sanitizePlayerName(rawName);
   if (!name) { showToast('Enter your name'); return; }
@@ -126,6 +163,10 @@ async function createParty() {
    JOIN PARTY
    =================================================== */
 async function joinParty() {
+  if (!(await ensureFirebaseReady())) {
+    showToast('Failed to connect to Firebase');
+    return;
+  }
   const rawName = document.getElementById('mp-name-input').value.trim();
   const name = sanitizePlayerName(rawName);
   const code = document.getElementById('mp-code-input').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');

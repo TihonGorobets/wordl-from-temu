@@ -2,27 +2,43 @@
   "rules": {
     "parties": {
       "$partyCode": {
+        ".read": "auth != null && (!data.exists() || data.child('status').val() === 'lobby' || data.child('players').child(auth.uid).exists())",
+        ".write": "auth != null && (!data.exists() || data.child('host').val() === auth.uid)",
 
-
-        ".read": true,
-
-        ".write": true,
+        "host": {
+          ".validate": "newData.isString() && (!data.exists() ? newData.val() === auth.uid : newData.val() === data.val())"
+        },
 
         "status": {
+          ".write": "auth != null && root.child('parties/' + $partyCode + '/host').val() === auth.uid",
           ".validate": "newData.val() === 'lobby' || newData.val() === 'choosing' || newData.val() === 'playing' || newData.val() === 'results'"
         },
         "gameMode": {
+          ".write": "auth != null && root.child('parties/' + $partyCode + '/host').val() === auth.uid",
           ".validate": "newData.val() === 'classic' || newData.val() === 'custom'"
         },
         "targetWord": {
+          ".write": "auth != null && root.child('parties/' + $partyCode + '/host').val() === auth.uid",
           ".validate": "newData.isString() && newData.val().length <= 5"
         },
         "round": {
+          ".write": "auth != null && root.child('parties/' + $partyCode + '/host').val() === auth.uid",
           ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "wordSetterIndex": {
+          ".write": "auth != null && root.child('parties/' + $partyCode + '/host').val() === auth.uid",
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "wordQueue": {
+          ".write": "auth != null && root.child('parties/' + $partyCode + '/host').val() === auth.uid",
+          "$index": {
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 128"
+          }
         },
 
         "players": {
           "$playerId": {
+            ".write": "auth != null && (auth.uid === $playerId || root.child('parties/' + $partyCode + '/host').val() === auth.uid)",
             "name": {
               ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 20"
             },
@@ -44,7 +60,8 @@
             },
             "$other": { ".validate": false }
           }
-        }
+        },
+        "$other": { ".validate": false }
       }
     },
 
