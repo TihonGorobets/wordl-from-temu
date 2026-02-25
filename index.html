@@ -123,6 +123,9 @@
     </div>
   </main>
 
+  <!-- Multiplayer: Live mini-boards strip (shown during a round for all players) -->
+  <div id="mp-live-boards" style="display:none"></div>
+
   <!-- Help Modal -->
   <div class="modal-overlay" id="help-modal">
     <div class="modal">
@@ -365,12 +368,18 @@
     </div>
   </div>
 
-  <!-- Multiplayer: Word-setter watching overlay -->
+  <!-- Multiplayer: Word-setter spectator overlay -->
   <div id="mp-watching-overlay" style="display:none">
-    <div class="mp-watching-box">
-      <div class="mp-watching-icon">👀</div>
-      <p class="mp-watching-title">Watching</p>
-      <p class="mp-watching-sub">The other players are guessing your word…</p>
+    <div class="mp-spectator-panel">
+      <div class="mp-spectator-header">
+        <div class="mp-watching-icon">👀</div>
+        <div>
+          <p class="mp-watching-title">Spectating</p>
+          <p class="mp-watching-sub">Watching players guess your word in real time…</p>
+        </div>
+      </div>
+      <!-- Live boards rendered by JS; letters + typing visible to the setter -->
+      <div id="mp-spectator-boards" class="mp-spectator-boards"></div>
     </div>
   </div>
 

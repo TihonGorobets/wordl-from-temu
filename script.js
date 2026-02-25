@@ -183,6 +183,7 @@ function addLetter(letter) {
   tile.dataset.state = 'tbd';
   currentGuess.push(letter);
   currentCol++;
+  mpSyncTyping(currentGuess);
 }
 
 function deleteLetter() {
@@ -192,6 +193,7 @@ function deleteLetter() {
   const tile = getTile(currentRow, currentCol);
   tile.textContent = '';
   tile.dataset.state = '';
+  mpSyncTyping(currentGuess);
 }
 
 /* ===================================================
@@ -205,6 +207,9 @@ function submitGuess() {
   }
 
   const guessWord = currentGuess.join('');
+
+  // Clear live typing indicator immediately when a guess is submitted
+  mpClearTyping();
 
   // Validate word
   if (!isValidWord(guessWord)) {

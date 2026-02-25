@@ -345,16 +345,35 @@ async function mpSubmitSecretWord() {
 }
 
 /* ===================================================
-   WORD SETTER WATCHING OVERLAY
+   WORD SETTER WATCHING OVERLAY  (spectator)
    =================================================== */
 function showMpWatchingOverlay() {
   document.getElementById('mp-watching-overlay').style.display = 'flex';
+
+  // Show spectator live boards (word setter sees letters + live typing)
+  startLiveBoardsListener(true);
+
+  // BUG FIX: if this player is the host AND the word setter, nobody else would
+  // be watching for all-done → write 'results'. Do it here.
+  if (mpIsHost) {
+    const playersRef = mpPartyRef.child('players');
+    const fn = playersRef.on('value', async snap => {
+      const players = snap.val() || {};
+      const all = Object.values(players);
+      if (all.length > 0 && all.every(p => p.done)) {
+        playersRef.off('value', fn);
+        await mpPartyRef.update({ status: 'results' });
+      }
+    });
+    mpListeners.push(() => playersRef.off('value', fn));
+  }
 
   const statusRef = mpPartyRef.child('status');
   const fn = statusRef.on('value', snap => {
     if (snap.val() === 'results') {
       statusRef.off('value', fn);
       document.getElementById('mp-watching-overlay').style.display = 'none';
+      removeLiveBoards();
       showMpResults();
     }
   });
@@ -382,6 +401,9 @@ async function startMpRound() {
 
   // Show banner
   renderMpBanner();
+
+  // Start live mini-boards for all players (colors only, no letters)
+  startLiveBoardsListener(false);
 
   // Start listening: host watches for all-done and triggers 'results'
   listenForRoundEnd();
@@ -468,8 +490,9 @@ function mpShouldSuppressSoloEnd() {
    RESULTS SCREEN
    =================================================== */
 async function showMpResults() {
-  // Clear any "waiting" toast
+  // Clear any "waiting" toast and live boards
   document.querySelectorAll('.toast').forEach(t => t.remove());
+  removeLiveBoards();
 
   const snap  = await mpPartyRef.once('value');
   const party = snap.val();
@@ -544,14 +567,40 @@ async function showMpResults() {
   document.getElementById('mp-results-guest-msg').style.display      = mpIsHost ? 'none' : '';
 
   openModal('mp-results-modal');
+
+  // BUG FIX: all clients (including guests) listen for the host to kick off the
+  // next round.  This is what makes Play Again / Return to Lobby work for guests.
+  if (!mpPartyRef) return;
+  const statusRef = mpPartyRef.child('status');
+  const nextRoundFn = statusRef.on('value', snap => {
+    const s = snap.val();
+    if (s === 'playing') {
+      statusRef.off('value', nextRoundFn);
+      document.querySelectorAll('.toast').forEach(t => t.remove());
+      closeModal('mp-results-modal');
+      startMpRound();
+    } else if (s === 'choosing') {
+      statusRef.off('value', nextRoundFn);
+      document.querySelectorAll('.toast').forEach(t => t.remove());
+      closeModal('mp-results-modal');
+      handleChoosingPhase();
+    } else if (s === 'lobby') {
+      statusRef.off('value', nextRoundFn);
+      document.querySelectorAll('.toast').forEach(t => t.remove());
+      closeModal('mp-results-modal');
+      enterLobby();
+    }
+    // 'results' → ignore (already here)
+  });
+  mpListeners.push(() => statusRef.off('value', nextRoundFn));
 }
 
 /* ===================================================
    PLAY AGAIN  (host only)
    =================================================== */
 async function mpPlayAgain() {
-  closeModal('mp-results-modal');
-
+  // Don't close the modal here — the shared status listener in showMpResults()
+  // will close it + navigate for ALL clients (including this host) once status changes.
   const snap = await mpPartyRef.child('players').once('value');
   const ids  = Object.keys(snap.val() || {});
 
@@ -562,21 +611,22 @@ async function mpPlayAgain() {
     resets[`players/${id}/guessCount`]   = 0;
     resets[`players/${id}/guesses`]      = {};
     resets[`players/${id}/isWordSetter`] = false;
+    resets[`players/${id}/typing`]       = '';
   });
   await mpPartyRef.update(resets);
 
   if (mpGameMode === 'classic') {
     const word = ANSWERS[Math.floor(Math.random() * ANSWERS.length)].toUpperCase();
-    await mpPartyRef.update({ status: 'playing', targetWord: word });
-    startMpRound();
+    // Status change triggers the shared listener → all clients call startMpRound()
+    await mpPartyRef.update({ status: 'playing', targetWord: word, round: firebase.database.ServerValue.increment(1) });
   } else {
-    // Rotate to next setter in queue
-    const partySnap  = await mpPartyRef.once('value');
-    const party      = partySnap.val();
-    const queueLen   = Object.keys(party.wordQueue || {}).length;
-    const nextIdx    = ((party.wordSetterIndex || 0) + 1) % queueLen;
-    await mpPartyRef.update({ status: 'choosing', wordSetterIndex: nextIdx, targetWord: '' });
-    handleChoosingPhase();
+    // Rotate to next setter
+    const partySnap = await mpPartyRef.once('value');
+    const party     = partySnap.val();
+    const queueLen  = Object.keys(party.wordQueue || {}).length;
+    const nextIdx   = ((party.wordSetterIndex || 0) + 1) % queueLen;
+    // Status change triggers the shared listener → all clients call handleChoosingPhase()
+    await mpPartyRef.update({ status: 'choosing', wordSetterIndex: nextIdx, targetWord: '', round: firebase.database.ServerValue.increment(1) });
   }
 }
 
@@ -584,9 +634,8 @@ async function mpPlayAgain() {
    RETURN TO LOBBY  (host only)
    =================================================== */
 async function mpReturnToLobby() {
-  closeModal('mp-results-modal');
+  // Status change triggers the shared listener → all clients call enterLobby()
   await mpPartyRef.update({ status: 'lobby', targetWord: '', wordQueue: {} });
-  enterLobby();
 }
 
 /* ===================================================
@@ -617,4 +666,133 @@ function cleanupMp() {
   mpDone         = false;
   mpIsHost       = false;
   mpIsWordSetter = false;
+  removeLiveBoards();
+}
+
+/* ===================================================
+   LIVE TYPING SYNC
+   =================================================== */
+async function mpSyncTyping(letters) {
+  if (!mpActive || mpDone || mpIsWordSetter || !mpPartyRef) return;
+  try {
+    await mpPartyRef.child(`players/${mpPlayerId}/typing`).set(letters.join(''));
+  } catch (e) { /* non-critical */ }
+}
+
+async function mpClearTyping() {
+  if (!mpActive || !mpPartyRef) return;
+  try {
+    await mpPartyRef.child(`players/${mpPlayerId}/typing`).set('');
+  } catch (e) { /* non-critical */ }
+}
+
+/* ===================================================
+   LIVE MINI-BOARDS
+   spectatorMode=true  → word setter view (shows letters + live typing)
+   spectatorMode=false → other players view (colors only)
+   =================================================== */
+function startLiveBoardsListener(spectatorMode) {
+  const container = spectatorMode
+    ? document.getElementById('mp-spectator-boards')
+    : document.getElementById('mp-live-boards');
+  if (!container) return;
+
+  container.style.display = '';
+
+  const playersRef = mpPartyRef.child('players');
+  const fn = playersRef.on('value', snap => {
+    renderLiveBoards(snap.val() || {}, spectatorMode, container);
+  });
+  mpListeners.push(() => {
+    playersRef.off('value', fn);
+    if (container) container.style.display = 'none';
+  });
+}
+
+function renderLiveBoards(players, spectatorMode, container) {
+  if (!container) return;
+  container.innerHTML = '';
+
+  const VALID_STATES = new Set(['correct', 'present', 'absent']);
+
+  Object.entries(players).forEach(([id, player]) => {
+    // In standard view, skip yourself; in spectator view show everyone else
+    if (!spectatorMode && id === mpPlayerId) return;
+    if (spectatorMode && id === mpPlayerId) return; // setter doesn't show themselves
+
+    const card = document.createElement('div');
+    card.classList.add('mp-live-card');
+
+    // Player name + status badge
+    const nameEl = document.createElement('div');
+    nameEl.classList.add('mp-live-name');
+    nameEl.textContent = player.name;
+    if (player.done) {
+      nameEl.classList.add(player.won ? 'mp-live-won' : 'mp-live-lost');
+    }
+    card.appendChild(nameEl);
+
+    // Mini board grid
+    const boardEl = document.createElement('div');
+    boardEl.classList.add('mp-live-board');
+
+    // Sort guesses by row index
+    const guessEntries = Object.entries(player.guesses || {}).sort((a,b) => +a[0] - +b[0]);
+    const guessCount = guessEntries.length;
+
+    for (let r = 0; r < MAX_GUESSES; r++) {
+      const rowEl = document.createElement('div');
+      rowEl.classList.add('mp-live-row');
+
+      if (r < guessCount) {
+        // Submitted row — always show colored tiles
+        const g = guessEntries[r][1];
+        const resultArr = (g.result || '').split(',');
+        const wordArr   = (g.word   || '').split('');
+        for (let c = 0; c < WORD_LENGTH; c++) {
+          const rawState = resultArr[c] || 'absent';
+          const state = VALID_STATES.has(rawState) ? rawState : 'absent';
+          const tile  = document.createElement('div');
+          tile.classList.add('mp-live-tile', state);
+          // Spectator sees real letters on submitted rows
+          if (spectatorMode && wordArr[c]) tile.textContent = wordArr[c];
+          rowEl.appendChild(tile);
+        }
+      } else if (r === guessCount && !player.done) {
+        // Active row — spectator sees live typing; regular players see blank
+        const typing = (player.typing || '');
+        for (let c = 0; c < WORD_LENGTH; c++) {
+          const tile = document.createElement('div');
+          tile.classList.add('mp-live-tile');
+          if (spectatorMode && typing[c]) {
+            tile.textContent = typing[c];
+            tile.classList.add('typing');
+          } else if (typing[c]) {
+            // Show a faint filled indicator but no letter
+            tile.classList.add('typing-hidden');
+          }
+          rowEl.appendChild(tile);
+        }
+      } else {
+        // Empty future rows
+        for (let c = 0; c < WORD_LENGTH; c++) {
+          const tile = document.createElement('div');
+          tile.classList.add('mp-live-tile');
+          rowEl.appendChild(tile);
+        }
+      }
+
+      boardEl.appendChild(rowEl);
+    }
+
+    card.appendChild(boardEl);
+    container.appendChild(card);
+  });
+}
+
+function removeLiveBoards() {
+  const a = document.getElementById('mp-live-boards');
+  const b = document.getElementById('mp-spectator-boards');
+  if (a) { a.innerHTML = ''; a.style.display = 'none'; }
+  if (b) { b.innerHTML = ''; }
 }

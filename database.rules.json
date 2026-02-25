@@ -30,6 +30,9 @@
             "won":        { ".validate": "newData.isBoolean()" },
             "guessCount": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 6" },
             "isWordSetter":{ ".validate": "newData.isBoolean()" },
+            "typing": {
+              ".validate": "newData.isString() && newData.val().length <= 5"
+            },
             "guesses": {
               "$rowIndex": {
                 "word":   { ".validate": "newData.isString() && newData.val().length === 5" },

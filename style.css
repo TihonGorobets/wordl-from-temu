@@ -848,28 +848,120 @@ main {
 .mp-results-actions { display: flex; gap: 8px; margin-bottom: 8px; }
 .mp-results-actions .mp-btn { margin-bottom: 0; }
 
-/* Word-setter watching overlay */
+/* ===== Spectator / watching overlay ===== */
 #mp-watching-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.82);
+  background: rgba(0,0,0,0.88);
   z-index: 900;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   backdrop-filter: blur(4px);
+  overflow-y: auto;
+  padding: 24px 12px;
 }
-.mp-watching-box {
-  text-align: center;
-  padding: 40px 32px;
+
+.mp-spectator-panel {
   background: var(--color-modal-bg);
   border: 1px solid var(--color-header-border);
   border-radius: 16px;
+  width: min(96vw, 760px);
   box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+  overflow: hidden;
 }
-.mp-watching-icon  { font-size: 3rem; margin-bottom: 12px; }
-.mp-watching-title { font-size: 1.4rem; font-weight: 700; letter-spacing: 0.1rem; text-transform: uppercase; margin-bottom: 8px; }
-.mp-watching-sub   { font-size: 0.9rem; color: var(--color-tone-2); }
+
+.mp-spectator-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--color-header-border);
+}
+
+.mp-watching-icon  { font-size: 2.2rem; flex-shrink: 0; }
+.mp-watching-title { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.08rem; text-transform: uppercase; margin-bottom: 2px; }
+.mp-watching-sub   { font-size: 0.82rem; color: var(--color-tone-2); }
+
+.mp-spectator-boards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: center;
+  padding: 20px;
+  min-height: 60px;
+}
+
+/* Spectator uses larger tiles so letters are readable */
+.mp-spectator-boards .mp-live-tile {
+  width: 34px;
+  height: 34px;
+  font-size: 0.75rem;
+  border-radius: 3px;
+}
+.mp-spectator-boards .mp-live-row   { gap: 3px; }
+.mp-spectator-boards .mp-live-board { gap: 3px; }
+.mp-spectator-boards .mp-live-name  { font-size: 0.72rem; max-width: 120px; margin-bottom: 2px; }
+.mp-spectator-boards .mp-live-card  { gap: 6px; }
+
+/* ===== Live mini-boards strip (shown below keyboard during a round) ===== */
+#mp-live-boards {
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 8px 8px 12px;
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.mp-live-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.mp-live-name {
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.04rem;
+  text-transform: uppercase;
+  color: var(--color-tone-2);
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mp-live-name.mp-live-won  { color: var(--color-correct); }
+.mp-live-name.mp-live-lost { opacity: 0.5; }
+
+.mp-live-board { display: flex; flex-direction: column; gap: 2px; }
+.mp-live-row   { display: flex; gap: 2px; }
+
+.mp-live-tile {
+  width: 20px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--color-tone-5);
+  border: 1px solid var(--color-tile-border-empty);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.52rem;
+  font-weight: 700;
+  color: #fff;
+  text-transform: uppercase;
+}
+.mp-live-tile.correct      { background: var(--color-correct); border-color: transparent; }
+.mp-live-tile.present      { background: var(--color-present); border-color: transparent; }
+.mp-live-tile.absent       { background: var(--color-absent);  border-color: transparent; }
+.mp-live-tile.typing       { background: var(--color-tone-4);  border-color: var(--color-tile-border-filled); color: var(--color-tile-text); }
+.mp-live-tile.typing-hidden{ background: var(--color-tone-4);  border-color: var(--color-tile-border-filled); }
 
 /* ===== Scrollbar ===== */
 ::-webkit-scrollbar { width: 6px; }
@@ -877,6 +969,83 @@ main {
 ::-webkit-scrollbar-thumb { background: var(--color-tone-3); border-radius: 3px; }
 
 /* ===== Responsive ===== */
+
+/* ── Phones (≤ 480 px wide) ── */
+@media (max-width: 480px) {
+  :root {
+    --tile-size: clamp(44px, 13.5vw, 56px);
+    --tile-gap: 4px;
+    --key-height: 54px;
+  }
+
+  header { height: 50px; padding: 0 8px; }
+  .header-center h1 { font-size: 1.4rem; letter-spacing: 0.08rem; }
+  .header-left, .header-right { min-width: auto; gap: 0; }
+  .icon-btn { padding: 5px; }
+
+  main { padding: 8px 0 10px; gap: 6px; }
+
+  /* Keyboard: let flex handle key width instead of fixed min/max-width */
+  #keyboard { padding: 0 3px; gap: 6px; }
+  .keyboard-row { gap: 4px; }
+  .key {
+    min-width: 0;
+    max-width: none;
+    flex: 1;
+    height: var(--key-height);
+    font-size: 0.82rem;
+    border-radius: 4px;
+    padding: 0;
+  }
+  .key-wide {
+    min-width: 0;
+    max-width: none;
+    flex: 1.55;
+    font-size: 0.7rem;
+  }
+
+  /* Modals slide up from bottom (bottom sheet) */
+  .modal-overlay { align-items: flex-end; }
+  .modal {
+    border-radius: 16px 16px 0 0;
+    width: 100%;
+    max-height: 90vh;
+    animation: modal-slide-up 0.25s ease;
+  }
+  .mp-results-modal  { width: 100%; }
+  .mp-results-table  { font-size: 0.8rem; }
+  .mp-mini-tile      { width: 14px; height: 14px; }
+
+  .stats-grid  { gap: 6px; }
+  .stat-num    { font-size: 1.8rem; }
+  .example-tile{ width: 44px; height: 44px; font-size: 1.4rem; }
+
+  #toast-container { top: 60px; }
+
+  /* Live boards bigger tiles on phones */
+  #mp-live-boards { gap: 10px; }
+  .mp-live-tile   { width: 22px; height: 22px; }
+
+  /* Spectator panel full-width */
+  #mp-watching-overlay { padding: 0; align-items: flex-end; }
+  .mp-spectator-panel  { border-radius: 16px 16px 0 0; width: 100%; max-height: 90vh; overflow-y: auto; }
+  .mp-spectator-boards .mp-live-tile { width: 26px; height: 26px; font-size: 0.6rem; }
+
+  /* MP modals full width */
+  .mp-results-actions { flex-direction: column; gap: 8px; }
+}
+
+/* ── Short landscape phones ── */
+@media (max-height: 700px) and (max-width: 480px) {
+  :root { --tile-size: clamp(38px, 11vw, 48px); --key-height: 46px; }
+  main { padding: 4px 0 6px; gap: 2px; }
+  #keyboard { gap: 4px; }
+  .keyboard-row { gap: 3px; }
+  header { height: 44px; }
+  .header-center h1 { font-size: 1.2rem; }
+}
+
+/* ── Very short screens (landscape) ── */
 @media (max-height: 600px) {
   :root { --tile-size: 44px; --key-height: 46px; }
   header { height: 44px; }
@@ -884,8 +1053,20 @@ main {
   main { padding: 6px 0 8px; gap: 4px; }
 }
 
-@media (max-width: 360px) {
-  :root { --tile-size: 48px; --tile-gap: 4px; }
-  .key { min-width: 36px; max-width: 36px; font-size: 0.75rem; }
-  .key-wide { min-width: 54px; max-width: 54px; font-size: 0.65rem; }
+@media (max-height: 480px) {
+  :root { --tile-size: 36px; --tile-gap: 3px; --key-height: 38px; }
+  header { height: 38px; }
+  .header-center h1 { font-size: 1.1rem; }
+  .header-left, .header-right { min-width: auto; }
+  main { padding: 2px 0 4px; gap: 1px; }
+  #keyboard { gap: 3px; }
+  .keyboard-row { gap: 3px; }
+  #toast-container { top: 44px; }
 }
+
+/* ── Slide-up animation for bottom-sheet modals ── */
+@keyframes modal-slide-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
