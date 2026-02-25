@@ -348,7 +348,7 @@ async function mpSubmitSecretWord() {
    WORD SETTER WATCHING OVERLAY  (spectator)
    =================================================== */
 function showMpWatchingOverlay() {
-  document.getElementById('mp-watching-overlay').style.display = 'flex';
+  document.getElementById('mp-watching-overlay').classList.add('visible');
 
   // Show spectator live boards (word setter sees letters + live typing)
   startLiveBoardsListener(true);
@@ -372,7 +372,7 @@ function showMpWatchingOverlay() {
   const fn = statusRef.on('value', snap => {
     if (snap.val() === 'results') {
       statusRef.off('value', fn);
-      document.getElementById('mp-watching-overlay').style.display = 'none';
+      document.getElementById('mp-watching-overlay').classList.remove('visible');
       removeLiveBoards();
       showMpResults();
     }
@@ -652,7 +652,7 @@ async function leaveParty() {
   }
   cleanupMp();
   ['mp-join-modal','mp-lobby-modal','mp-word-modal','mp-results-modal'].forEach(closeModal);
-  document.getElementById('mp-watching-overlay').style.display = 'none';
+  document.getElementById('mp-watching-overlay').classList.remove('visible');
   removeMpBanner();
   showToast('Left party');
 }
