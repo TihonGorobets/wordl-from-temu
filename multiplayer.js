@@ -30,6 +30,7 @@ let mpDone         = false;   // this player finished the round
 let mpIsWordSetter = false;   // custom-mode: this player chose the word this round
 let db             = null;
 let mpAuthReadyPromise = null;
+let mpLastAuthErrorMessage = '';
 
 /* ===================================================
    FIREBASE INIT
@@ -52,6 +53,7 @@ function initFirebase() {
 }
 
 async function ensureFirebaseReady() {
+  mpLastAuthErrorMessage = '';
   if (!initFirebase()) return false;
   try {
     if (!firebase.auth || typeof firebase.auth !== 'function') {
@@ -61,26 +63,33 @@ async function ensureFirebaseReady() {
     if (auth.currentUser) return true;
 
     if (!mpAuthReadyPromise) {
-      // Retry up to 3 times with a short delay — helps on flaky mobile connections
+      const withTimeout = (promise, ms, label) => Promise.race([
+        promise,
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+        })
+      ]);
+
+      // Retry up to 3 times with back-off + timeout — helps on flaky mobile connections.
       mpAuthReadyPromise = (async () => {
         const MAX_TRIES = 3;
         let lastErr;
         for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
           try {
-            await auth.signInAnonymously();
+            await withTimeout(auth.signInAnonymously(), 8000, 'Anonymous sign-in');
             return; // success
           } catch (err) {
             lastErr = err;
             // auth/operation-not-allowed → anonymous auth is disabled in Firebase Console;
             // retrying won't help, bail immediately with a clear message.
-            if (err.code === 'auth/operation-not-allowed') {
+            if (err && err.code === 'auth/operation-not-allowed') {
               throw new Error(
                 'Anonymous sign-in is disabled. ' +
                 'Enable it in Firebase Console → Authentication → Sign-in method → Anonymous.'
               );
             }
             if (attempt < MAX_TRIES) {
-              await new Promise(r => setTimeout(r, 800 * attempt)); // 0.8s, 1.6s back-off
+              await new Promise(r => setTimeout(r, 1200 * attempt)); // 1.2s, 2.4s back-off
             }
           }
         }
@@ -94,6 +103,10 @@ async function ensureFirebaseReady() {
     return true;
   } catch (e) {
     console.error('Firebase auth failed:', e);
+    mpLastAuthErrorMessage =
+      e && e.message
+        ? e.message
+        : 'Failed to sign in to multiplayer. Check connection and try again.';
     return false;
   }
 }
@@ -140,7 +153,7 @@ function generatePartyCode() {
    =================================================== */
 async function openMpMenu() {
   if (!(await ensureFirebaseReady())) {
-    showToast('Multiplayer unavailable right now. Please refresh and try again.');
+    showToast(mpLastAuthErrorMessage || 'Multiplayer unavailable right now. Please refresh and try again.');
     return;
   }
   // Pre-fill name if returning player
@@ -154,7 +167,7 @@ async function openMpMenu() {
    =================================================== */
 async function createParty() {
   if (!(await ensureFirebaseReady())) {
-    showToast('Failed to connect to Firebase');
+    showToast(mpLastAuthErrorMessage || 'Failed to connect to Firebase');
     return;
   }
   const rawName = document.getElementById('mp-name-input').value.trim();
@@ -196,7 +209,7 @@ async function createParty() {
    =================================================== */
 async function joinParty() {
   if (!(await ensureFirebaseReady())) {
-    showToast('Failed to connect to Firebase');
+    showToast(mpLastAuthErrorMessage || 'Failed to connect to Firebase');
     return;
   }
   const rawName = document.getElementById('mp-name-input').value.trim();
@@ -233,7 +246,7 @@ async function joinParty() {
 /* Strips anything that isn't a letter, digit, space, hyphen, or apostrophe
    and collapses multiple spaces, capped at 20 chars. */
 function sanitizePlayerName(raw) {
-  return raw.replace(/[^\p{L}\p{N} '\-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 20);
+  return raw.replace(/[^A-Za-z0-9 '\-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
 }
 
 function mpPlayerObj(name) {
