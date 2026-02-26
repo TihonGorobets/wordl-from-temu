@@ -391,10 +391,12 @@ async function mpHostStart() {
     const shuffled = [...ids].sort(() => Math.random() - 0.5);
     const wordQueue = {};
     shuffled.forEach((id, i) => { wordQueue[i] = id; });
+    const firstSetterId = wordQueue[0];
     await mpPartyRef.update({
       status: 'choosing',
       wordQueue,
       wordSetterIndex: 0,
+      host: firstSetterId,
       targetWord: '',
       round: firebase.database.ServerValue.increment(1)
     });
@@ -410,6 +412,8 @@ async function handleChoosingPhase() {
   const queue   = party.wordQueue   || {};
   const idx     = party.wordSetterIndex || 0;
   const setterId = queue[idx];
+
+  mpIsHost = !!(party && party.host && party.host === mpPlayerId);
 
   mpIsWordSetter = (mpPlayerId === setterId);
 
@@ -486,14 +490,17 @@ async function mpSubmitSecretWord() {
   const previousPlayerId = mpPlayerId;
   mpPlayerId = authUid;
 
-  // Re-check current setter from the server right before submit to avoid stale local state.
+  // Re-check current setter and host from the server right before submit to avoid stale local state.
   let liveSetterId = '';
+  let amHostNow = false;
   try {
     const partySnap = await mpPartyRef.once('value');
     const party = partySnap.val() || {};
     const queue = party.wordQueue || {};
     const idx = party.wordSetterIndex || 0;
     liveSetterId = queue[idx] || '';
+    amHostNow = !!(party.host && party.host === authUid);
+    mpIsHost = amHostNow;
     mpIsWordSetter = (mpPlayerId === liveSetterId);
   } catch (e) {
     console.error('Failed to refresh chooser state:', e);
@@ -514,7 +521,7 @@ async function mpSubmitSecretWord() {
   if (word.length !== 5)      { showToast('Word must be exactly 5 letters'); return; }
   if (!/^[A-Z]+$/.test(word)) { showToast('Word must contain only letters'); return; }
 
-  if (mpIsHost) {
+  if (amHostNow) {
     // Host can write game state directly
     const snap = await mpPartyRef.child('players').once('value');
     const ids  = Object.keys(snap.val() || {});
@@ -725,6 +732,8 @@ async function showMpResults() {
   const players = party.players || {};
   const word    = party.targetWord || '';
 
+  mpIsHost = !!(party && party.host && party.host === mpPlayerId);
+
   document.getElementById('mp-results-word').textContent = word;
 
   const tbody = document.getElementById('mp-results-tbody');
@@ -851,8 +860,9 @@ async function mpPlayAgain() {
     const party     = partySnap.val();
     const queueLen  = Object.keys(party.wordQueue || {}).length;
     const nextIdx   = ((party.wordSetterIndex || 0) + 1) % queueLen;
+    const nextSetterId = (party.wordQueue || {})[nextIdx] || '';
     // Status change triggers the shared listener → all clients call handleChoosingPhase()
-    await mpPartyRef.update({ status: 'choosing', wordSetterIndex: nextIdx, targetWord: '', round: firebase.database.ServerValue.increment(1) });
+    await mpPartyRef.update({ status: 'choosing', wordSetterIndex: nextIdx, host: nextSetterId, targetWord: '', round: firebase.database.ServerValue.increment(1) });
   }
 }
 

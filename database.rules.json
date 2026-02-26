@@ -6,7 +6,7 @@
         ".write": "auth != null && (!data.exists() || data.child('host').val() === auth.uid)",
 
         "host": {
-          ".validate": "newData.isString() && (!data.exists() ? newData.val() === auth.uid : newData.val() === data.val())"
+          ".validate": "newData.isString() && newData.val().length > 0 && (!data.exists() ? newData.val() === auth.uid : auth.uid === data.val())"
         },
 
         "status": {
