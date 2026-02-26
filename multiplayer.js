@@ -469,6 +469,23 @@ async function handleChoosingPhase() {
 }
 
 async function mpSubmitSecretWord() {
+  if (!(await ensureFirebaseReady())) {
+    showToast(mpLastAuthErrorMessage || 'Multiplayer unavailable right now');
+    return;
+  }
+
+  const authUid = firebase.auth && firebase.auth().currentUser
+    ? firebase.auth().currentUser.uid
+    : '';
+  if (authUid && authUid !== mpPlayerId) {
+    mpPlayerId = authUid;
+  }
+
+  if (!mpIsWordSetter) {
+    showToast('Waiting for the selected player to submit the word');
+    return;
+  }
+
   const word = document.getElementById('mp-secret-word-input').value.trim().toUpperCase();
   if (word.length !== 5)      { showToast('Word must be exactly 5 letters'); return; }
   if (!/^[A-Z]+$/.test(word)) { showToast('Word must contain only letters'); return; }
@@ -501,7 +518,11 @@ async function mpSubmitSecretWord() {
       await mpPartyRef.child(`players/${mpPlayerId}/proposedWord`).set(word);
     } catch (e) {
       console.error('Failed to propose word:', e);
-      showToast('Failed to submit word. Please try again.');
+      if (e && (e.code === 'PERMISSION_DENIED' || e.code === 'permission-denied')) {
+        showToast('Submission denied. Rejoin the party and try again.');
+      } else {
+        showToast('Failed to submit word. Please try again.');
+      }
       return;
     }
 
