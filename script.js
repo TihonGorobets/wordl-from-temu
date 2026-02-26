@@ -215,7 +215,9 @@ function submitGuess() {
   mpClearTyping();
 
   // Validate word
-  if (!isValidWord(guessWord)) {
+  const mpCustomMode = typeof mpActive !== 'undefined' && typeof mpGameMode !== 'undefined' && mpActive && mpGameMode === 'custom';
+  const isCustomTargetGuess = mpCustomMode && typeof targetWord === 'string' && guessWord === targetWord;
+  if (!isValidWord(guessWord) && !isCustomTargetGuess) {
     showToast('Not in word list');
     shakeRow(currentRow);
     return;
